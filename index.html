@@ -1,51 +1,41 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ED Lineales de Primer Orden</title>
-    <link rel="stylesheet" href="estilos.css">
-    <script defer src="main.js"></script>
+  <meta charset="UTF-8">
+  <title>Inicio - Exámenes de Ecuaciones Diferenciales</title>
+  <link rel="stylesheet" href="css/estilo.css">
+  <script>
+    // Lista manual de exámenes disponibles
+    const examenes = [
+      { nombre: "Examen 1 - Ecuaciones Diferenciales Básicas", archivo: "temas/index1.html" },
+      { nombre: "Examen 2 - Soluciones por Series", archivo: "temas/index2.html" },
+      // Puedes agregar aquí más exámenes fácilmente
+    ];
+  </script>
 </head>
+
 <body>
+  <div class="container">
+    <h1>Exámenes de Ecuaciones Diferenciales</h1>
+    <p>Selecciona un examen para comenzar:</p>
+    
+    <ul id="lista-examenes">
+      <!-- Aquí el JS insertará los enlaces -->
+    </ul>
+  </div>
 
-    <header>
-        <h1>Ecuaciones Diferenciales Lineales de Primer Orden</h1>
-        <nav>
-            <button onclick="mostrarSeccion('teoria')">Teoría</button>
-            <button onclick="mostrarSeccion('practica')">Práctica Guiada</button>
-            <button onclick="mostrarSeccion('evaluacion')">Evaluación</button>
-        </nav>
-    </header>
-
-    <main>
-        <!-- Sección Teoría -->
-        <section id="teoria" class="seccion">
-            <h2>Teoría Básica</h2>
-            <p>Una ecuación diferencial lineal de primer orden tiene la forma general:</p>
-            <p><strong>y' + p(x)y = q(x)</strong></p>
-            <p>Esta ecuación se caracteriza porque el término que acompaña a la función \( y \) es de primer orden, y la ecuación puede ser resuelta utilizando el factor integrante.</p>
-            <div id="pregunta-fv"></div>
-        </section>
-
-        <!-- Sección Práctica Guiada -->
-        <section id="practica" class="seccion" style="display:none;">
-            <h2>Práctica Guiada</h2>
-            <button onclick="mostrarTipoED()">Elige el tipo de ED</button>
-            <div id="tipo-ed"></div>
-            <div id="ed-generada"></div>
-        </section>
-
-        <!-- Sección Evaluación -->
-        <section id="evaluacion" class="seccion" style="display:none;">
-            <h2>Evaluación Final</h2>
-            <div id="evaluacion-contenido"></div>
-        </section>
-    </main>
-
-    <footer>
-        <p>© 2025 Proyecto de Aprendizaje de ED</p>
-    </footer>
-
+  <script>
+    // Genera dinámicamente la lista de exámenes
+    const lista = document.getElementById('lista-examenes');
+    examenes.forEach(examen => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = examen.archivo;
+      a.textContent = examen.nombre;
+      li.appendChild(a);
+      lista.appendChild(li);
+    });
+  </script>
 </body>
 </html>
+
