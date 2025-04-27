@@ -1,88 +1,237 @@
-function mostrarSeccion(id) {
-    // Ocultar todas las secciones
-    document.querySelectorAll('.seccion').forEach(sec => {
-        sec.style.display = 'none';
+// main.js
+
+import config from './config1.js';
+import * as math from 'mathjs'; // Asegúrate que mathjs esté cargado correctamente
+
+const DEFAULT_TEST_POINTS = [0, 0.5, 1, 1.5, 2, Math.PI/4, Math.PI/2];
+const DEFAULT_TOLERANCE = 1e-4;
+
+class EDExamen {
+  constructor(config) {
+    this.config = config;
+    this.questions = config.questions || [];
+    this.score = 0;
+    this.mathJaxRetryCount = 0;
+    this.isMobile = /Mobi|Android/i.test(navigator.userAgent);
+    this.isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  }
+
+  start() {
+    this.generateExam();
+    this.setupEventListeners();
+    this.applyMobileStyles();
+  }
+
+  generateExam() {
+    const container = document.getElementById('quiz-container');
+    if (!container) return this.showError(new Error('No se encontró el contenedor principal.'));
+    
+    container.innerHTML = '';
+    this.questions.forEach((q, idx) => {
+      const questionEl = document.createElement('div');
+      questionEl.className = 'question';
+      questionEl.dataset.index = idx;
+      questionEl.innerHTML = `
+        <div class="question-text mathjax">${q.text}</div>
+        ${q.inputType === 'text'
+          ? `<input type="text" class="answer-input" />`
+          : `<select class="answer-input">
+              ${(q.options || []).map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+            </select>`}
+        <div class="feedback hidden"></div>
+      `;
+      container.appendChild(questionEl);
     });
-    // Mostrar la sección seleccionada
-    document.getElementById(id).style.display = 'block';
 
-    if (id === 'teoria') {
-        mostrarPreguntaFV();  // Llamar función de preguntas F/V
+    document.getElementById('submit-exam').classList.remove('hidden');
+    this.safeRenderMathJax([container]);
+  }
+
+  evaluateExam() {
+    const container = document.getElementById('quiz-container');
+    if (!container) return;
+
+    const questionEls = container.querySelectorAll('.question');
+    this.score = 0;
+
+    questionEls.forEach((questionEl, idx) => {
+      const userInput = questionEl.querySelector('.answer-input')?.value ?? '';
+      const question = this.questions[idx];
+      const result = this.evaluateSolution(userInput, question.solution, question.params || {});
+
+      if (result.isValid) this.score++;
+
+      this.showFeedback(questionEl, result.isValid, question.solution, question.steps);
+    });
+
+    document.getElementById('submit-exam').classList.add('hidden');
+    if (this.config.grading.allowRetry) {
+      document.getElementById('retry-exam')?.classList.remove('hidden');
     }
-}
+    this.showFinalResult();
+  }
 
-function mostrarPreguntaFV() {
-    const pregunta = "¿Toda ecuación de la forma y' + p(x)y = q(x) es una ED lineal de primer orden?";
-    const respuestaCorrecta = true; // Verdadero
+  evaluateSolution(userInput, expectedSolution, params) {
+    try {
+      if (!userInput || userInput.trim().length < 2) {
+        throw new Error("Expresión demasiado corta");
+      }
 
-    // Crear botones de respuesta F/V
-    const div = document.getElementById('pregunta-fv');
-    div.innerHTML = `
-        <p><strong>Pregunta Falso/Verdadero:</strong></p>
-        <p>${pregunta}</p>
-        <button onclick="evaluarFV(true, ${respuestaCorrecta})">Verdadero</button>
-        <button onclick="evaluarFV(false, ${respuestaCorrecta})">Falso</button>
-        <div id="retro-fv"></div>
-    `;
-}
+      userInput = userInput.trim().replace(/^['"]|['"]$/g, '');
+      const scope = { ...params };
+      let maxError = 0;
+      let validPoints = 0;
 
-function evaluarFV(respuestaUsuario, respuestaCorrecta) {
-    const div = document.getElementById('retro-fv');
-    if (respuestaUsuario === respuestaCorrecta) {
-        div.innerHTML = "<p style='color:green;'>¡Correcto!</p>";
-    } else {
-        div.innerHTML = "<p style='color:red;'>Incorrecto. Revisa la definición de ED lineales de primer orden.</p>";
-    }
-}
+      const points = this.config.testPoints || DEFAULT_TEST_POINTS;
+      const tolerance = this.config.tolerance || DEFAULT_TOLERANCE;
 
-function mostrarTipoED() {
-    // Mostrar opciones para que el estudiante elija el tipo de ED
-    const div = document.getElementById('tipo-ed');
-    div.innerHTML = `
-        <p><strong>Elige el tipo de ED para resolver:</strong></p>
-        <button onclick="generarED('tipo1')">y' + ay = b</button>
-        <button onclick="generarED('tipo2')">y' + ay = e^(bx) (b ≠ -a)</button>
-    `;
-}
+      for (const x of points) {
+        try {
+          scope.x = x;
+          const userVal = math.evaluate(userInput, scope);
+          const expectedVal = math.evaluate(expectedSolution, scope);
 
-function generarED(tipo) {
-    let a = Math.floor(Math.random() * 5) + 1; // Coeficiente aleatorio de 1 a 5
-    let b = Math.floor(Math.random() * 5) + 1; // Coeficiente aleatorio de 1 a 5
-    let ed = '';
-    let metodo = '';
-    
-    if (tipo === 'tipo1') {
-        ed = `y' + ${a}y = ${b}`;
-        metodo = 'Resuelve la ecuación y\' + ay = b usando el factor integrante. La solución es: y(x) = (b/a) + C * e^(-ax).';
-    } else if (tipo === 'tipo2') {
-        // Para este tipo, aseguramos que b ≠ -a
-        while (b === -a) {
-            b = Math.floor(Math.random() * 5) + 1; // Reintentar si b = -a
+          if (!isFinite(userVal) || !isFinite(expectedVal)) continue;
+
+          const error = Math.abs(userVal - expectedVal) / (1 + Math.abs(expectedVal));
+          maxError = Math.max(maxError, error);
+          validPoints++;
+        } catch (e) {
+          continue;
         }
-        ed = `y' + ${a}y = e^(${b}x)`;
-        metodo = 'Resuelve la ecuación y\' + ay = e^(bx) usando el factor integrante. La solución es: y(x) = (e^(bx)/(a - b)) + C * e^(-ax).';
+      }
+
+      if (validPoints === 0) throw new Error("No se pudo evaluar en ningún punto");
+      if (validPoints < points.length * 0.6) throw new Error("Solo se evaluó en algunos puntos");
+
+      return {
+        isValid: maxError < tolerance,
+        error: maxError < tolerance ? null : `Error máximo: ${maxError.toExponential(2)}`,
+        maxError,
+        pointsTested: validPoints
+      };
+    } catch (e) {
+      return {
+        isValid: false,
+        error: e.message,
+        pointsTested: 0
+      };
+    }
+  }
+
+  showFeedback(questionEl, isCorrect, correctSolution = '', steps = []) {
+    const feedbackEl = questionEl.querySelector('.feedback');
+    if (!feedbackEl) return;
+
+    feedbackEl.innerHTML = isCorrect
+      ? '✅ ¡Correcto!'
+      : `❌ Incorrecto. ${correctSolution ? `<br>Solución esperada: <span class="mathjax">${correctSolution}</span>` : ''}
+          ${steps.length ? this.renderSolutionSteps(steps) : ''}`;
+    feedbackEl.className = `feedback ${isCorrect ? 'correct' : 'incorrect'}`;
+    feedbackEl.classList.remove('hidden');
+
+    this.safeRenderMathJax([feedbackEl]);
+  }
+
+  renderSolutionSteps(steps) {
+    if (!steps.length) return '';
+    return `
+      <div class="solution-steps">
+        <strong>Pasos de solución:</strong>
+        ${steps.map(step => `<div class="mathjax">${step}</div>`).join('')}
+      </div>
+    `;
+  }
+
+  showFinalResult() {
+    const resultEl = document.getElementById('exam-result');
+    if (!resultEl) return;
+
+    const percentage = (this.score / this.questions.length * 100).toFixed(1);
+    resultEl.innerHTML = `
+      <h2>Resultado Final</h2>
+      <p>Obtuviste <strong>${this.score} de ${this.questions.length}</strong> (${percentage}%)</p>
+      ${this.score >= this.questions.length * (this.config.grading.passingScore || 0.7)
+        ? '<p class="pass">¡Aprobado!</p>'
+        : '<p class="fail">Inténtalo nuevamente.</p>'}
+    `;
+    resultEl.classList.remove('hidden');
+    this.safeRenderMathJax([resultEl]);
+  }
+
+  safeRenderMathJax(elements = []) {
+    if (!window.MathJax) {
+      if (this.mathJaxRetryCount < 5) {
+        setTimeout(() => {
+          this.mathJaxRetryCount++;
+          this.safeRenderMathJax(elements);
+        }, 500);
+      }
+      return;
     }
 
-    // Mostrar la ED generada
-    document.getElementById('ed-generada').innerHTML = `
-        <p><strong>Resuelve la siguiente ED:</strong> ${ed}</p>
-        <p><em>${metodo}</em></p>
-        <button onclick="resolverED('${a}', '${b}', tipo)">Ver solución paso a paso</button>
-    `;
-}
-
-function resolverED(a, b, tipo) {
-    let solucion = '';
-    
-    if (tipo === 'tipo1') {
-        solucion = `La solución general de la ED y' + ${a}y = ${b} es: y(x) = ${b}/${a} + C * e^(-${a}x)`;
-    } else if (tipo === 'tipo2') {
-        solucion = `La solución general de la ED y' + ${a}y = e^(${b}x) es: y(x) = (e^(${b}x)/(a - ${b})) + C * e^(-${a}x)`;
+    if (this.isSafari) {
+      document.querySelectorAll('.mathjax').forEach(el => {
+        el.style.display = 'inline-block';
+      });
     }
 
-    document.getElementById('ed-generada').innerHTML = `
-        <p><strong>Solución:</strong> ${solucion}</p>
-        <button onclick="generarED('tipo1')">Generar ED tipo 1</button>
-        <button onclick="generarED('tipo2')">Generar ED tipo 2</button>
+    MathJax.typesetPromise(elements).catch(e => console.error("MathJax render error:", e));
+  }
+
+  applyMobileStyles() {
+    if (!this.isMobile) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .question {
+        padding: 12px;
+        margin: 10px 0;
+      }
+      .answer-input {
+        font-size: 16px;
+        padding: 8px;
+        width: 95%;
+      }
+      button {
+        font-size: 16px;
+        padding: 10px;
+        margin-top: 8px;
+      }
+      .mathjax {
+        font-size: 1.1em;
+      }
     `;
+    document.head.appendChild(style);
+  }
+
+  setupEventListeners() {
+    document.getElementById('submit-exam')?.addEventListener('click', () => this.evaluateExam());
+    document.getElementById('retry-exam')?.addEventListener('click', () => {
+      this.generateExam();
+      document.getElementById('submit-exam').classList.remove('hidden');
+      document.getElementById('retry-exam').classList.add('hidden');
+    });
+    document.getElementById('new-exam')?.addEventListener('click', () => {
+      this.generateExam();
+      document.getElementById('submit-exam').classList.remove('hidden');
+      document.getElementById('retry-exam').classList.add('hidden');
+    });
+  }
+
+  showError(error) {
+    const container = document.getElementById('quiz-container') || document.body;
+    container.innerHTML = `
+      <div class="error">
+        <h2>Error al cargar el examen</h2>
+        <p>${error.message}</p>
+        <button onclick="window.location.reload()">Recargar</button>
+      </div>
+    `;
+  }
 }
+
+const examen = new EDExamen(config);
+window.addEventListener('DOMContentLoaded', () => examen.start());
+
+export default EDExamen;
